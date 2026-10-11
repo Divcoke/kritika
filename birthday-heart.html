@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Happy Birthday</title>
+<style>
+:root{--bg:#050b24;--fg:#cfe8ff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font-family:Georgia,"Times New Roman",serif;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+h1{margin:0 0 4px;font-size:clamp(1.4rem,5vw,2.4rem);letter-spacing:.04em;text-align:center}
+p{margin:0 0 8px;opacity:.6;font-size:.85rem;font-family:system-ui,sans-serif}
+canvas{width:min(94vw,86vh);height:min(90vw,82vh);max-height:70%;cursor:pointer}
+</style>
+</head>
+<body>
+<h1 id="title">Happy Birthday!</h1>
+<p>tap the heart to replay</p>
+<canvas id="c"></canvas>
+<script>
+// Optional: add ?name=Sara to the page URL to personalise the title.
+const name = new URLSearchParams(location.search).get('name');
+if (name) document.getElementById('title').textContent = 'Happy Birthday, ' + name + '!';
+
+const PHRASES = ["Happy Birthday","Feliz Cumpleaños","Joyeux Anniversaire","Alles Gute zum Geburtstag","Buon Compleanno","Feliz Aniversário","İyi ki Doğdun","Gefeliciteerd","Grattis på födelsedagen","जन्मदिन मुबारक","お誕生日おめでとう","생일 축하해요","生日快乐","С днём рождения","عيد ميلاد سعيد","Χρόνια πολλά","Wszystkiego najlepszego","יום הולדת שמח","Selamat ulang tahun","Heri ya siku ya kuzaliwa"];
+const FONT = '"Segoe UI","Noto Sans","Noto Sans CJK JP","Noto Sans Devanagari","Noto Sans Arabic","Noto Sans Hebrew",Arial,sans-serif';
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let W, H, rows = [], start = 0, doneAt = 0, poly = [], fontPx = 12;
+const OUT = 2600, LEAD = OUT * 0.7; // border draws for OUT ms; text starts filling at LEAD
+
+function heartPoly(cx, cy, s) {
+  const pts = [];
+  for (let i = 0; i < 360; i++) {
+    const t = i / 360 * Math.PI * 2;
+    pts.push([cx + s * 16 * Math.pow(Math.sin(t), 3),
+              cy - s * (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t))]);
+  }
+  return pts;
+}
+function intervals(poly, y) { // x-ranges that are inside the heart at scanline y (2 near the top dip)
+  const xs = [];
+  for (let i = 0; i < poly.length; i++) {
+    const [x1, y1] = poly[i], [x2, y2] = poly[(i + 1) % poly.length];
+    if ((y1 <= y && y2 > y) || (y2 <= y && y1 > y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1));
+  }
+  xs.sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i + 1 < xs.length; i += 2) out.push([xs[i], xs[i + 1]]);
+  return out;
+}
+
+function build() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  W = r.width; H = r.height;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const s = Math.min(W / 36, H / 32);
+  poly = heartPoly(W / 2, H / 2 + s * 1.5, s);
+  const top = Math.min(...poly.map(p => p[1])), bot = Math.max(...poly.map(p => p[1]));
+  const rowH = Math.max(11, Math.round((bot - top) / 26));
+  const fs = rowH * 0.78; fontPx = fs;
+  ctx.font = fs + 'px ' + FONT;
+  rows = []; let p = 0;
+  let li = 0;
+  const hh = rowH * 0.4, pad = 6;
+  for (let y = top + rowH * 0.6; y < bot - rowH * 0.2; y += rowH) {
+    // keep only the x-ranges that are inside the heart at the row's top, middle AND bottom edge,
+    // so no letter can poke through the border (and the top dip splits the row in two)
+    let iv = intervals(poly, y);
+    for (const dy of [-hh, hh]) {
+      const o = intervals(poly, y + dy), n = [];
+      for (const a of iv) for (const b of o) {
+        const lo = Math.max(a[0], b[0]), hi = Math.min(a[1], b[1]);
+        if (hi > lo) n.push([lo, hi]);
+      }
+      iv = n;
+    }
+    for (const [a, b] of iv) {
+      const w = b - a - pad * 2; if (w < fs * 3) continue;
+      let text = null;
+      for (let tries = 0; tries < PHRASES.length; tries++) {
+        const c = PHRASES[p % PHRASES.length]; p++;
+        if (ctx.measureText(c).width <= w * 1.1) { text = c; break; }
+      }
+      if (!text) continue;
+      while (true) {
+        const next = text + '  ♥  ' + PHRASES[p % PHRASES.length];
+        const tw = ctx.measureText(text).width, nw = ctx.measureText(next).width;
+        if (nw > w) { if (Math.abs(w / nw - 1) < Math.abs(w / tw - 1)) { text = next; p++; } break; }
+        text = next; p++;
+      }
+      const k = w / ctx.measureText(text).width; // stretch/squeeze so the line meets the border exactly
+      rows.push({ text, x: (a + b) / 2, y, k, t: (y - top) / (bot - top), i: li });
+    }
+    li++;
+  }
+  start = performance.now();
+  doneAt = start + LEAD + rows.length * 70 + 900;
+}
+
+const ease = t => 1 - Math.pow(1 - t, 3);
+function frame(now) {
+  ctx.clearRect(0, 0, W, H);
+  const fs = Math.max(11, Math.round(H / 34)) * 0.78;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const rowFs = fontPx;
+  ctx.font = rowFs + 'px ' + FONT;
+  // 1) glowing border draws itself from the bottom tip up both sides
+  if (poly.length) {
+    const op = Math.min(1, (now - start) / OUT), k = Math.floor(ease(op) * 180);
+    ctx.save();
+    ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#2457e6'; ctx.shadowColor = '#1d4ed8'; ctx.shadowBlur = 14;
+    ctx.globalAlpha = op < 1 ? 1 : 0.6 + 0.25 * Math.sin(now / 600);
+    ctx.beginPath(); ctx.moveTo(poly[180][0], poly[180][1]);
+    for (let j = 1; j <= k; j++) { const q = poly[(180 + j) % 360]; ctx.lineTo(q[0], q[1]); }
+    ctx.moveTo(poly[180][0], poly[180][1]);
+    for (let j = 1; j <= k; j++) { const q = poly[(180 - j + 360) % 360]; ctx.lineTo(q[0], q[1]); }
+    ctx.stroke(); ctx.restore();
+  }
+  // 2) then the text fills the heart row by row
+  for (const r of rows) {
+    const p = Math.min(1, Math.max(0, (now - start - LEAD - r.i * 70) / 900));
+    if (p <= 0) continue;
+    const e = ease(p);
+    let light = 68 + 10 * Math.abs(r.t - 0.4) * 2;              // crimson centre -> glowing edges
+    // glow is live from the first frame: a bright flash as each line appears, then a continuous shimmer
+    const g = Math.max(0, Math.sin(now / 500 + r.i * 1.7)) ** 8;
+    light += 28 * g + 30 * (1 - e);
+    ctx.save();
+    ctx.globalAlpha = e;
+    ctx.shadowColor = '#4da6ff'; ctx.shadowBlur = 4 + 14 * g + 14 * (1 - e);
+    ctx.fillStyle = `hsl(${198 + r.t * 14}, 95%, ${Math.min(88, light)}%)`;
+    ctx.translate(r.x, r.y + (1 - e) * 60);
+    ctx.scale(r.k, 1);
+    ctx.fillText(r.text, 0, 0);
+    ctx.restore();
+  }
+  requestAnimationFrame(frame);
+}
+cv.addEventListener('click', () => { start = performance.now(); doneAt = start + LEAD + rows.length * 70 + 900; });
+addEventListener('resize', build);
+build(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>
