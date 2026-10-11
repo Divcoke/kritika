@@ -56,8 +56,8 @@ function build() {
   W = r.width; H = r.height;
   cv.width = W * dpr; cv.height = H * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const s = Math.min(W / 36, H / 32);
-  poly = heartPoly(W / 2, H / 2 + s * 1.5, s);
+  const s = Math.min(W / 35, H / 31);
+  poly = heartPoly(W / 2, H / 2 - s * 2.5, s);
   const top = Math.min(...poly.map(p => p[1])), bot = Math.max(...poly.map(p => p[1]));
   const rowH = Math.max(11, Math.round((bot - top) / 26));
   const fs = rowH * 0.78; fontPx = fs;
